@@ -12,9 +12,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@clerk/nextjs": "^6.20.0",
     "@sentry/node": "^9.22.0",
     "@sentry/profiling-node": "^9.22.0",
     "bcrypt": "^6.0.0",
+    "body-parser": "^2.2.0",
     "cloudinary": "^2.6.1",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
@@ -22,7 +25,11 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.15.0",
     "multer": "^2.0.0",
+    "next": "^15.3.2",
     "nodemon": "^3.1.10",
-    "svix": "^1.65.0"
+    "raw-body": "^3.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "svix": "^1.66.0"
   }
 }
