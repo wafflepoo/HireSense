@@ -1,4 +1,5 @@
 import './config/instrument.js'
+import { protectCompany } from './middleware/authMiddleware.js';
 import express from 'express'
 import cors from 'cors'
 import 'dotenv/config'
@@ -12,7 +13,10 @@ import jobRoutes from "./routes/jobRoutes.js"
 import userRoutes from './routes/userRoutes.js'
 import {clerkMiddleware} from '@clerk/express'
 import franceTravailRoutes from "./routes/franceTravailRoutes.js";
+
 dotenv.config();
+
+
 
 
 

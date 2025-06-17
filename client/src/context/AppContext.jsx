@@ -66,7 +66,7 @@ export const AppContextProvider = (props) => {
   }
 
   //Function to fetch user data
-  //Function to fetch user data
+
 const fetchUserData = async () => {
   try {
     const token = await getToken();
@@ -90,6 +90,37 @@ const fetchUserData = async () => {
   }
 }
 
+
+//Function to fetch user's applied applications data 
+// Function to fetch user's applied applications data 
+const fetchUserApplications = async () => {
+  try {
+    const token = await getToken();
+    console.log("🔑 Token envoyé pour /api/user/application :", token);
+
+    const { data } = await axios.get(backendUrl + '/api/user/application', {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    console.log("📨 Réponse reçue de /api/user/application :", data);
+
+    if (data.success) {
+      console.log("✅ Applications récupérées :", data.applications);
+      setUserApplications(data.applications);
+    } else {
+      console.error("❌ Échec récupération des applications :", data.message);
+      toast.error(data.message);
+    }
+  } catch (error) {
+    console.error("❌ Erreur dans fetchUserApplications :", error.response?.data || error.message);
+    toast.error(error.message);
+  }
+};
+
+
+
   // Au montage, on charge les jobs et les jobs France Travail + token en local storage
   useEffect(() => {
     fetchJobs();
@@ -110,7 +141,8 @@ const fetchUserData = async () => {
   useEffect(() => {
   if (user) {
     console.log("Utilisateur Clerk détecté:", user);
-    fetchUserData();
+    fetchUserData()
+    fetchUserApplications()
   } else {
     console.log("Aucun utilisateur connecté.");
   }
@@ -145,6 +177,9 @@ useEffect(() => {
     userData,setUserData,
     userApplications,setUserApplications,
     fetchUserData,
+    fetchUserApplications
+
+    
   };
 
   return (

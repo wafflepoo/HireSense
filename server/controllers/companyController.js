@@ -118,35 +118,78 @@ catch (error) {
 }
 
 //Get Company Job Applicants
-export const getCompanyJobApplicants = async (req,res)=>{
 
-}
+export const getCompanyJobApplicants = async (req, res) => {
+  try {
+    const companyId = req.company._id;
+
+    // Trouve les candidatures pour les jobs de cette entreprise
+    const applications = await JobApplication.find({ company_id: companyId })
+      .populate('user_id', 'name image resume')
+      .populate('job_id', 'title location category level salary description')
+      .exec();
+
+    return res.json({ success: true, applications });
+  } catch (error) {
+    console.error("Erreur lors de la récupération des candidatures :", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 
 //Get Company Posted Jobs
-export const getCompanyPostedJobs = async (req,res)=>{
-    try{
-        const companyId = req.company._id
-        const jobs = await Job.find({companyId})
 
-        //ADDING NO. OF APPLICANTS INFO IN DATA
+export const getCompanyPostedJobs = async (req, res) => {
+  try {
+    const companyId = req.company._id;
 
-        const jobsData = await Promise.all(jobs.map(async(job)=>{
-            const applicants = await JobApplication.find({jobId:job._id})
-            return {...job.toObject(),applicants:applicants.length}
-        }))
+    // Récupérer tous les jobs de cette entreprise
+    const jobs = await Job.find({ companyId });
 
-        res.json({success:true,jobsData})
-    }
-    catch(error){
-        res.json({success:false,message:error.message})
+    // Pour chaque job, compter combien d'applications existent
+    const jobsData = await Promise.all(
+      jobs.map(async (job) => {
+        const applicationCount = await JobApplication.countDocuments({ job_id: job._id });
+        return {
+          ...job._doc,
+          applicants: applicationCount,
+        };
+      })
+    );
 
-    }
+    console.log("✅ Jobs préparés avec nombre  de candidatures :", jobsData);
 
-}
+    res.status(200).json({
+      success: true,
+      jobsData,
+    });
+
+  } catch (error) {
+    console.error("❌ Erreur dans getCompanyPostedJobs :", error);
+    res.status(500).json({
+      success: false,
+      message: "Erreur serveur lors de la récupération des offres avec candidatures.",
+    });
+  }
+};
 
 //Change Job Application Status
 export const changeJobApplicationStatus = async (req,res)=>{
 
+    try {
+
+         const {id , status} = req.body
+    //find job application and update status
+    await JobApplication.findOneAndUpdate({_id:id},{status})
+    res.json({success:true , message:'Status Changed'})
+
+        
+    } catch (error) {
+        res.json({success:false , message:error.message})
+        
+    }
+
+   
 }
 
 //Change job visibility
