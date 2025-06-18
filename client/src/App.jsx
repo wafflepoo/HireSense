@@ -4,7 +4,7 @@ import Navbar from './components/Navbar'
 import Hero from './components/Hero'; // chemin selon ton arborescence
 
 
-import Home from './pages/home'
+import Home from './pages/Home'
 import ApplyJob from './pages/ApplyJob'
 import Application from './pages/Application'
 import RecruiterLogin from './components/RecruiterLogin';
