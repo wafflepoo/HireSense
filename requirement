@@ -1,0 +1,9 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+spacy==3.7.2
+sentence-transformers==2.2.2
+PyPDF2==3.0.1
+python-docx==0.8.11
+torch==2.1.0
+transformers==4.35.0
