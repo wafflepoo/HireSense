@@ -60,4 +60,5 @@ To run both the client and server applications, you will need two separate termi
     cd client
     npm run dev # Or 'npm run dev' or whatever your client start command is
     ```
-    The client application will typically open in your browser at `http://localhost:5173` (or another port specified by your client-side framework).
+    The client application will typically open in your browser at `http://localhost:5173` (or another port specified by your client-side framework). 
+ARMAGAN Hivda
