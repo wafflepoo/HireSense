@@ -9,11 +9,20 @@ const Navbar = () => {
   const { user, isLoaded, isSignedIn } = useUser()
   const navigate = useNavigate()
 
-  const {setShowRecruiterLogin} = useContext(AppContext)
+  const {setShowRecruiterLogin,isAdmin} = useContext(AppContext)
 
-  useEffect(() => {
-    console.log('Navbar mounted')
-  }, [])
+ const handleSignIn = () => {
+     openSignIn({
+      redirectUrl: '/',
+      afterSignInUrl: '/'
+    });
+  };
+    // Redirect admin users to admin dashboard on login
+
+
+  // useEffect(() => {
+  //   console.log('Navbar mounted')
+  // }, [])
 
 
 
@@ -23,9 +32,17 @@ const Navbar = () => {
         <img onClick={()=>navigate('/')} className='cursor-pointer' src={assets.logo} alt="logo" />
 
         {isLoaded && user && user.id ? (
-          <div className='flex items-center gap-4'>
-            <Link to='/application' className='text-blue-600'>Applied Jobs</Link>
-            <p> | </p>
+     <div className='flex items-center gap-4'>
+            {/* Show Admin link only for admin users */}
+            {isAdmin ? (
+              <Link to='/admin' className='text-blue-600'>Admin Panel</Link>
+            ) : (
+              <>
+                <Link to='/application' className='text-blue-600'>Applied Jobs</Link>
+                <p> | </p>
+              </>
+            )}
+            
             <p className='max-sm:hidden'>Hi, {user.firstName + ' ' + user.lastName}</p>
             <UserButton afterSignOutUrl='/' />
           </div>
@@ -33,10 +50,12 @@ const Navbar = () => {
           <div className='flex gap-4 max-sm:text-xs'>
             <button onClick={e=> setShowRecruiterLogin(true)} className='text-gray-600'>Recruiter Login</button>
             <button
-              onClick={() => {
-                console.log('Login button clicked, opening sign in modal')
-                openSignIn({ redirectUrl: '/' })
-              }}
+              // onClick={() => {
+              //   console.log('Login button clicked, opening sign in modal')
+              //   openSignIn({ redirectUrl: '/' })
+              //   onClick={handleSignIn}
+              // }}
+              onClick={handleSignIn}
               className='bg-blue-600 text-white px-4 py-1.5 rounded-full'
             >
               Login
