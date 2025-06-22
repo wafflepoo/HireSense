@@ -14,7 +14,15 @@ import userRoutes from './routes/userRoutes.js'
 import {clerkMiddleware} from '@clerk/express'
 import franceTravailRoutes from "./routes/franceTravailRoutes.js";
 
+
+
+
 dotenv.config();
+
+
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 
 
 
@@ -41,6 +49,15 @@ app.post('/webhooks',clerkWebhooks)
 app.use('/api/company',companyRoutes)
 app.use('/api/jobs',jobRoutes)
 app.use('/api/user',userRoutes)
+
+
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve affichage.html statiquement
+app.use('/affichage.html', express.static(path.join(__dirname, '../affichage.html')));
+
 
 
 //Port

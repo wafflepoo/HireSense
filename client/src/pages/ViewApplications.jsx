@@ -4,6 +4,7 @@ import { AppContext } from '../context/AppContext';
 import { toast } from 'react-toastify';
 import Loading from '../components/Loading';
 import { assets } from '../assets/assets';
+// import { Link } from 'react-router-dom'; // ⬅️ si tu veux utiliser Link
 
 const ViewApplications = () => {
   const { backendUrl, companyToken } = useContext(AppContext);
@@ -61,6 +62,19 @@ const ViewApplications = () => {
 
   return (
     <div className="container mx-auto p-4">
+      {/* ✅ Bouton vers la page de scoring */}
+<div className="flex justify-end mb-4">
+  <a
+    href="http://localhost:5000/affichage.html"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
+  >
+    🔍 Voir le Scoring des CVs
+  </a>
+</div>
+
+
       <div className="w-full max-w-6xl bg-white border border-gray-200 shadow-sm rounded-md overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead>
