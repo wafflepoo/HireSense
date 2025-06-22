@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import Company from '../models/Company.js';
 import User from '../models/User.js';
+import { ROLES } from '../utils/constant.js';
 
 // Middleware pour protéger l'utilisateur
 export const protectUser = async (req, res, next) => {
@@ -51,4 +52,47 @@ export const protectCompany = async (req, res, next) => {
   } catch (error) {
     return res.json({ success: false, message: error.message });
   }
+};
+
+
+export const authenticate = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Authorization token required' 
+    });
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = await User.findOne({ _id: decoded.id });
+    
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+    
+    next();
+  } catch (error) {
+    res.status(401).json({ 
+      success: false, 
+      error: 'Invalid or expired token' 
+    });
+  }
+};
+
+export const authorizeAdmin = (req, res, next) => {
+  if (req.user?.role !== ROLES.ADMIN) {
+    return res.status(403).json({ 
+      success: false, 
+      error: 'Admin privileges required' 
+    });
+  }
+  next();
 };

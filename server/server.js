@@ -13,6 +13,7 @@ import jobRoutes from "./routes/jobRoutes.js"
 import userRoutes from './routes/userRoutes.js'
 import {clerkMiddleware} from '@clerk/express'
 import franceTravailRoutes from "./routes/franceTravailRoutes.js";
+import adminRoutes from './routes/adminRoutes.js';
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ app.post('/webhooks',clerkWebhooks)
 app.use('/api/company',companyRoutes)
 app.use('/api/jobs',jobRoutes)
 app.use('/api/user',userRoutes)
+app.use("/api/admin",adminRoutes);
 
 
 //Port
