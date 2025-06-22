@@ -1,5 +1,6 @@
 import { Webhook } from "svix";
 import User from "../models/User.js";
+import { CV_LIMITS, ROLES, SUBSCRIPTION_TYPES } from "../utils/constant.js";
 
 // API Controller Function to Manage Clerk User with database
 export const clerkWebhooks = async (req, res) => {
@@ -28,7 +29,12 @@ export const clerkWebhooks = async (req, res) => {
 
         if (!email) {
           console.error("❌ Email introuvable dans le webhook !");
-          return res.status(400).json({ success: false, message: "Email manquant dans Clerk data" });
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message: "Email manquant dans Clerk data",
+            });
         }
 
         const userData = {
@@ -36,7 +42,19 @@ export const clerkWebhooks = async (req, res) => {
           name: `${data.first_name} ${data.last_name}`,
           email,
           image: data.image_url,
-          resume: '',
+          role: data.public_metadata?.role || ROLES.CANDIDATE,
+          subscription: {
+            plan:
+              data.public_metadata?.subscription?.plan ||
+              SUBSCRIPTION_TYPES.STARTER,
+            cvLimit:
+              CV_LIMITS[
+                data.public_metadata?.subscription?.plan ||
+                  SUBSCRIPTION_TYPES.STARTER
+              ],
+            startDate: new Date(),
+          },
+          resume: "",
         };
 
         console.log("📝 Création user avec :", userData);
@@ -53,25 +71,30 @@ export const clerkWebhooks = async (req, res) => {
           name: `${data.first_name} ${data.last_name}`,
           email,
           image: data.image_url,
+           role: data.public_metadata?.role,
+          'subscription.plan': data.public_metadata?.subscription?.plan,
+          'subscription.cvLimit': CV_LIMITS[data.public_metadata?.subscription?.plan]
         };
 
         console.log("✏️ Mise à jour user :", data.id, userData);
 
-        await User.findByIdAndUpdate(data.id, userData);
+        await User.findByIdAndUpdate({_id: data.id}, userData);
         res.json({ success: true });
         break;
       }
 
       case "user.deleted": {
         console.log("🗑 Suppression user :", data.id);
-        await User.findByIdAndDelete(data.id);
+        await User.findByIdAndDelete({_id:data.id});
         res.json({ success: true });
         break;
       }
 
       default:
         console.log("⚠️ Type d'événement non géré :", type);
-        res.status(400).json({ success: false, message: "Événement non supporté" });
+        res
+          .status(400)
+          .json({ success: false, message: "Événement non supporté" });
         break;
     }
   } catch (error) {

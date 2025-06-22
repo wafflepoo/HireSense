@@ -1,7 +1,34 @@
+import { use } from "react";
 import Job from "../models/Job.js";
 import JobApplication from "../models/JobApplication.js";
 import User from "../models/User.js";
 import { v2 as cloudinary } from 'cloudinary';
+
+// Add to userController.js
+// -------- GET ALL USERS (ADMIN ONLY) --------
+export const getAllUsers = async (req, res) => {
+  try {
+    // Verify admin role from Clerk metadata
+
+    // Get users with sensitive fields excluded
+    const users = await User.find({})
+      .select('-password -__v -refreshToken')
+      .lean();
+
+    console.log(`✅ [getAllUsers] ${users.length} utilisateurs récupérés`);
+    return res.json({ 
+      success: true, 
+      users 
+    });
+
+  } catch (error) {
+    console.error("❌ [getAllUsers] Erreur:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Erreur serveur" 
+    });
+  }
+};
 
 // -------- GET USER DATA --------
 export const getUserData = async (req, res) => {
@@ -17,6 +44,7 @@ export const getUserData = async (req, res) => {
 
   try {
     const user = await User.findOne({ _id: userId });
+    
     console.log("✅ [getUserData] Utilisateur récupéré:", user);
     return res.json({ success: true, user: user || null });
   } catch (error) {
