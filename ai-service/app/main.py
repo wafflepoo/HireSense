@@ -6,8 +6,8 @@ import shutil
 import logging
 from typing import Dict, Any, List
 
-from utils.extract_text import extract_text, extract_entities_structured_auto
-from scoring import calculate_score
+from .extract_text import extract_text, extract_entities_structured_auto
+from .scoring import calculate_score
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
