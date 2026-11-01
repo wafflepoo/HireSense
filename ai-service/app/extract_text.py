@@ -1,4 +1,6 @@
-import spacy
+from app.pdf_layout import extract_pdf_text
+import re
+from spacy.lang.fr.stop_words import STOP_WORDS
 from PyPDF2 import PdfReader
 import docx
 from docx import Document
@@ -18,15 +20,9 @@ def extract_text_debug(path):
     print(f"[DEBUG] Taille fichier: {os.path.getsize(path) if os.path.exists(path) else 'N/A'} bytes")
 
     try:
-        if file_ext == '.pdf':
-            reader = PdfReader(path)
-            print(f"[DEBUG] Nombre de pages PDF: {len(reader.pages)}")
-            for i, page in enumerate(reader.pages):
-                page_text = page.extract_text() or ""
-                print(f"[DEBUG] Page {i + 1}: {len(page_text)} caractères")
-                text += page_text
-
-        elif file_ext in ['.doc', '.docx']:
+        if str(path).lower().endswith(".pdf"):
+            return extract_pdf_text(path)
+        elif file_ext == '.docx':
             print(f"[DEBUG] Tentative d'ouverture du fichier Word...")
 
             # Vérifier si le fichier est un vrai fichier Word
@@ -113,8 +109,7 @@ def extract_text_debug(path):
     return text
 
 
-nlp = spacy.load("fr_core_news_lg")
-stop_words = nlp.Defaults.stop_words
+stop_words = STOP_WORDS
 
 # Liste des langues courantes
 LANGUES_COURANTES = {
@@ -149,120 +144,293 @@ def is_language(text):
 
 
 def extract_entities_structured_auto_debug(text):
-    """Extraction d'entités avec debugging détaillé"""
-    print(f"[DEBUG] Analyse des entités sur {len(text)} caractères")
-
-    if not text or not text.strip():
-        print("[DEBUG] Texte vide ou null!")
-        return {
-            "competences": [],
-            "experiences": [],
-            "diplomes": [],
-            "postes": [],
-            "langues": []
-        }
-
-    print(f"[DEBUG] Aperçu du texte à analyser: '{text[:100]}...'")
-
-    try:
-        doc = nlp(text)
-        print(f"[DEBUG] Document spaCy créé avec {len(doc)} tokens")
-        print(f"[DEBUG] Entités détectées par spaCy: {len(doc.ents)}")
-
-        # Debug des entités
-        for ent in doc.ents:
-            print(f"[DEBUG] Entité: '{ent.text}' - Label: {ent.label_}")
-
-    except Exception as e:
-        print(f"[DEBUG] Erreur lors de l'analyse spaCy: {e}")
-        return {
-            "competences": [],
-            "experiences": [],
-            "diplomes": [],
-            "postes": [],
-            "langues": []
-        }
-
-    competences = set()
-    experiences = set()
-    diplomes = set()
-    postes = set()
-    langues = set()
-
-    # Recherche explicite de langues dans le texte
-    lines = text.split('\n')
-    print(f"[DEBUG] Analyse de {len(lines)} lignes pour les langues")
-
-    for line in lines:
-        line_lower = line.lower()
-        if any(keyword in line_lower for keyword in ['langue', 'language', 'idioma', 'parlé', 'écrit', 'oral']):
-            print(f"[DEBUG] Ligne avec langues trouvée: '{line}'")
-            words = line.split()
-            for word in words:
-                if is_language(word):
-                    langues.add(word.capitalize())
-                    print(f"[DEBUG] Langue détectée: {word}")
-
-    # Analyse des entités nommées
-    entities_processed = 0
-    for ent in doc.ents:
-        label = ent.label_.lower()
-        ent_text = ent.text.strip()
-
-        if not is_valid_entity(ent_text):
-            continue
-
-        cleaned = ent_text.strip()
-        entities_processed += 1
-
-        print(f"[DEBUG] Traitement entité #{entities_processed}: '{cleaned}' ({label})")
-
-        # Vérifier d'abord si c'est une langue
-        if is_language(cleaned):
-            langues.add(cleaned.capitalize())
-            print(f"[DEBUG] -> Classée comme langue")
-        elif label in ["skill", "work_of_art", "product", "misc"]:
-            competences.add(cleaned)
-            print(f"[DEBUG] -> Classée comme compétence")
-        elif label in ["org", "event"] or "stage" in cleaned.lower() or "poste" in cleaned.lower():
-            experiences.add(cleaned)
-            print(f"[DEBUG] -> Classée comme expérience")
-        elif any(keyword in cleaned.lower() for keyword in ["bac", "licence", "master", "bts", "but", "diplôme"]):
-            diplomes.add(cleaned)
-            print(f"[DEBUG] -> Classée comme diplôme")
-        elif any(keyword in cleaned.lower() for keyword in
-                 ["développeur", "analyst", "ingénieur", "consultant", "data"]):
-            postes.add(cleaned)
-            print(f"[DEBUG] -> Classée comme poste")
-
-    # Recherche de motifs linguistiques pour les langues
+    """Extraction structurée des informations d'un CV."""
     import re
-    language_patterns = [
-        r'(français|anglais|espagnol|allemand|italien|portugais|chinois|japonais|arabe|russe)\s*[:\-]?\s*(courant|fluent|natif|bilingue|débutant|intermédiaire|avancé)?',
-        r'(french|english|spanish|german|italian|portuguese|chinese|japanese|arabic|russian)\s*[:\-]?\s*(fluent|native|beginner|intermediate|advanced)?'
-    ]
+    import unicodedata
 
-    for pattern in language_patterns:
-        matches = re.finditer(pattern, text.lower())
-        for match in matches:
-            langue = match.group(1)
-            langues.add(langue.capitalize())
-            print(f"[DEBUG] Langue détectée par regex: {langue}")
-
-    result = {
-        "competences": sorted(competences),
-        "experiences": sorted(experiences),
-        "diplomes": sorted(diplomes),
-        "postes": sorted(postes),
-        "langues": sorted(langues)
+    categories = {
+        "competences": [],
+        "experiences": [],
+        "diplomes": [],
+        "postes": [],
+        "langues": [],
     }
 
-    print(f"[DEBUG] Résultat final:")
-    for key, values in result.items():
-        print(f"[DEBUG] {key}: {len(values)} éléments - {values}")
+    if not text or not text.strip():
+        return categories
 
-    return result
+    def normalize(value):
+        value = unicodedata.normalize("NFKD", value.casefold())
+        value = "".join(
+            c for c in value if not unicodedata.combining(c)
+        )
+        return re.sub(r"\s+", " ", value).strip()
 
+    def contains(value, term):
+        pattern = r"(?<!\w)" + re.escape(normalize(term)) + r"(?!\w)"
+        return bool(re.search(pattern, normalize(value)))
+
+    headings = {
+        "profil": "profil",
+        "a propos": "profil",
+        "resume": "profil",
+        "competences": "competences",
+        "competences techniques": "competences",
+        "skills": "competences",
+        "formations": "formation",
+        "formation": "formation",
+        "education": "formation",
+        "experiences professionnelles": "experiences",
+        "experience professionnelle": "experiences",
+        "experiences": "experiences",
+        "experience": "experiences",
+        "professional experience": "experiences",
+        "langues": "langues",
+        "languages": "langues",
+        "projets": "projets",
+        "projets academiques": "projets",
+        "projets personnels": "projets",
+        "centres d'interet": "autres",
+        "loisirs": "autres",
+    }
+
+    sections = []
+    current = "inconnu"
+
+    for raw in text.splitlines():
+        line = re.sub(r"\s+", " ", raw).strip()
+        if not line:
+            continue
+
+        key = normalize(line).strip(" :-|")
+        if key in headings:
+            current = headings[key]
+            continue
+
+        sections.append((current, line))
+
+    skills = {
+        "Python": ["python"],
+        "SQL": ["sql"],
+        "Pandas": ["pandas"],
+        "NumPy": ["numpy"],
+        "Power BI": ["power bi", "powerbi"],
+        "Excel": ["excel"],
+        "Tableau": ["tableau software", "tableau"],
+        "Docker": ["docker"],
+        "Git": ["git"],
+        "GitHub": ["github"],
+        "GitLab": ["gitlab"],
+        "Java": ["java"],
+        "JavaScript": ["javascript"],
+        "TypeScript": ["typescript"],
+        "React": ["react", "react.js", "reactjs"],
+        "Node.js": ["node.js", "nodejs"],
+        "FastAPI": ["fastapi"],
+        "Flask": ["flask"],
+        "Django": ["django"],
+        "PostgreSQL": ["postgresql", "postgres"],
+        "MySQL": ["mysql"],
+        "MongoDB": ["mongodb"],
+        "Spark": ["spark", "pyspark"],
+        "Airflow": ["airflow"],
+        "AWS": ["aws"],
+        "Azure": ["azure"],
+        "GCP": ["gcp", "google cloud"],
+        "Snowflake": ["snowflake"],
+        "Streamlit": ["streamlit"],
+        "Matplotlib": ["matplotlib"],
+        "Seaborn": ["seaborn"],
+        "TensorFlow": ["tensorflow"],
+        "PyTorch": ["pytorch"],
+        "NLP": ["nlp"],
+        "Machine Learning": ["machine learning"],
+        "API REST": ["api rest", "rest api"],
+        "Automatisation": ["automatisation"],
+        "Kubernetes": ["kubernetes", "k8s"],
+        "Terraform": ["terraform"],
+        "Jenkins": ["jenkins"],
+        "Linux": ["linux", "ubuntu", "debian", "red hat", "rhel"],
+        "CI/CD": ["ci/cd", "ci cd", "continuous integration", "continuous deployment"],
+        "Ansible": ["ansible"],
+        "Prometheus": ["prometheus"],
+        "Grafana": ["grafana"],
+        "Helm": ["helm charts", "helm"],
+        "SRE": ["site reliability engineering", "sre"],
+    }
+
+    competences = set()
+    for section, line in sections:
+        if section in {"formation", "langues", "autres"}:
+            continue
+        for name, aliases in skills.items():
+            if any(contains(line, alias) for alias in aliases):
+                competences.add(name)
+
+    languages = {
+        "Français": ["francais", "french"],
+        "Anglais": ["anglais", "english"],
+        "Arabe": ["arabe", "arabic"],
+        "Espagnol": ["espagnol", "spanish"],
+        "Allemand": ["allemand", "german"],
+        "Italien": ["italien", "italian"],
+        "Portugais": ["portugais", "portuguese"],
+        "Chinois": ["chinois", "chinese"],
+        "Japonais": ["japonais", "japanese"],
+        "Russe": ["russe", "russian"],
+    }
+
+    langues = set()
+    level_pattern = re.compile(
+        r"\b(?:a1|a2|b1|b2|c1|c2|bilingue|"
+        r"courant|maternel|maternelle|natif|native)\b"
+    )
+
+    for section, line in sections:
+        for name, aliases in languages.items():
+            if any(contains(line, alias) for alias in aliases):
+                if section == "langues" or level_pattern.search(normalize(line)):
+                    langues.add(name)
+
+    # Les CV multicolonnes peuvent séparer noms et niveaux.
+    # Un nom de langue est accepté lorsqu'il apparaît près
+    # du titre LANGUES, et non simplement partout dans le CV.
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if normalize(line).strip(" :-|") in {"langues", "languages"}:
+            nearby = "\n".join(lines[index + 1:index + 9])
+            for name, aliases in languages.items():
+                if any(contains(nearby, alias) for alias in aliases):
+                    langues.add(name)
+
+    diploma_re = re.compile(
+        r"\b(?:master(?:\s+[12])?|licence(?:\s+[123])?|"
+        r"bachelor|bts|but|doctorat|baccalaureat)\b"
+    )
+
+    future_re = re.compile(
+        r"\b(?:recherche|souhaite|envisage|integrer|"
+        r"admission|candidature|a partir de|des|des septembre|"
+        r"prochainement|futur|future)\b"
+    )
+
+    diplomes = set()
+    for section, line in sections:
+        normalized = normalize(line)
+        if not diploma_re.search(normalized):
+            continue
+
+        # Un diplôme mentionné dans un objectif professionnel
+        # n'est pas une formation suivie.
+        if section != "formation":
+            continue
+
+        if future_re.search(normalized):
+            continue
+
+        cleaned = re.sub(
+            r"^\s*(?:19|20)\d{2}\s*[-–:]?\s*",
+            "",
+            line
+        ).strip()
+
+        # Ne pas prendre un classement scolaire pour un diplôme.
+        if re.search(r"\btop\s*\d+\b", normalized):
+            match = diploma_re.search(normalized)
+            if match:
+                diplomes.add(match.group(0).title())
+            continue
+
+        diplomes.add(cleaned.strip(" |•·:-–—\t"))
+
+    # Les intitulés et dates sont reconnus dans les sections professionnelles.
+    # Les missions seules ne doivent pas devenir des expériences.
+    job_terms = {
+        "Ingénieur DevOps": ["ingenieur devops", "devops engineer"],
+        "Administrateur systèmes": ["administrateur systemes", "system administrator", "administrateur linux"],
+        "Ingénieur Cloud": ["ingenieur cloud", "cloud engineer"],
+        "Data Analyst": ["data analyst"],
+        "Data Scientist": ["data scientist"],
+        "Data Engineer": ["data engineer"],
+        "Business Analyst": ["business analyst"],
+        "Chef de projet": ["chef de projet"],
+        "Développeur": ["developpeur", "developer"],
+        "Ingénieur": ["ingenieur", "engineer"],
+        "Consultant": ["consultant"],
+        "Technicien support": ["technicien support", "support technician"],
+        "Assistant administratif": ["assistant administratif", "assistante administrative"],
+    }
+    month = r"(?:janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)"
+    date_token = rf"(?:{month}\s+)?(?:19|20)\d{{2}}|(?:0?[1-9]|1[0-2])/(?:19|20)\d{{2}}"
+    date_re = re.compile(rf"(?<!\d)(?:{date_token})(?!\d)")
+    year_re = re.compile(r"\b(?:19|20)\d{2}\b")
+    section_lines = [line for section, line in sections if section == "experiences"]
+    # Intitulé de poste au début, éventuellement précédé d'une date.
+    role_re = re.compile(
+        r"^(?:(?:19|20)\d{2}\s*[-–:|]\s*)?"
+        r"(?:stagiaire|alternant(?:e)?|assistant(?:e)?|"
+        r"ingenieur|developpeur|consultant|administrateur|"
+        r"technicien|responsable|analyste|data analyst|"
+        r"data engineer|data scientist|chef de projet|"
+        r"devops engineer|cloud engineer|system administrator)\b"
+    )
+    def is_header(line):
+        n = normalize(line).strip(" |•-–—")
+        if not n or len(n) > 220:
+            return False
+        if role_re.search(n):
+            return True
+        # Date + séparateur + intitulé libre (p. ex. « 2020–2023 | SRE »).
+        if year_re.search(n) and re.search(r"\b(?:devops|sre|support|systemes|cloud|data|reseau)\b", n):
+            return True
+        return False
+
+    experiences = []
+    current = []
+    def flush():
+        if current:
+            entry = re.sub(r"\s+", " ", " ".join(current)).strip(" |•-–—")
+            if entry and entry not in experiences:
+                experiences.append(entry)
+
+    for line in section_lines:
+        if is_header(line):
+            flush()
+            current = [line]
+            continue
+        if not current:
+            continue
+        header = normalize(" ".join(current))
+        if len(date_re.findall(header)) >= 2:
+            flush()
+            current = []
+            continue
+        n = normalize(line)
+        if re.match(r"^(?:analyse|developpement|creation|participation|gestion|mise en place|automatisation|extraction|controle|conception|deploiement|maintenance|supervision|administration|realisation)\b", n):
+            flush()
+            current = []
+            continue
+        if len(current) < 3 and len(line) < 120:
+            current.append(line)
+    flush()
+
+    postes = set()
+    for experience in experiences:
+        n = normalize(experience)
+        for name, aliases in job_terms.items():
+            if any(contains(n, alias) for alias in aliases):
+                postes.add(name)
+    # Ne pas retourner « Ingénieur » si « Ingénieur DevOps » est reconnu.
+    if "Ingénieur DevOps" in postes or "Ingénieur Cloud" in postes:
+        postes.discard("Ingénieur")
+
+    return {
+        "competences": sorted(competences),
+        "experiences": experiences,
+        "diplomes": sorted(diplomes),
+        "postes": sorted(postes),
+        "langues": sorted(langues),
+    }
 
 # Fonctions d'alias pour la compatibilité
 def extract_text(path):

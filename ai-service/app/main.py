@@ -6,15 +6,33 @@ import shutil
 import logging
 from typing import Dict, Any, List
 
+from contextlib import asynccontextmanager
+from .scoring import _model
+from time import perf_counter
+import tempfile
+from pathlib import Path
+
 from .extract_text import extract_text, extract_entities_structured_auto
-from .scoring import calculate_score
+from .scoring import calculate_score_detailed
+from .experience_details import extract_experiences_detailed, total_experience_months
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="CV Analyzer API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Chargement du modèle sémantique HireSense...")
+    _model()
+    logger.info("Modèle sémantique prêt.")
+    yield
 
+
+app = FastAPI(
+    title="CV Analyzer API",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,7 +43,9 @@ app.add_middleware(
 )
 
 # Extensions de fichiers supportées
-SUPPORTED_EXTENSIONS = {'.pdf', '.doc', '.docx'}
+SUPPORTED_EXTENSIONS = {'.pdf', '.docx'}
+
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 Mo
 
 def validate_file_type(filename: str) -> bool:
     """Valider le type de fichier"""
@@ -53,17 +73,39 @@ async def analyze_cv(
     if not offer or not offer.strip():
         raise HTTPException(status_code=400, detail="Texte de l'offre d'emploi requis")
 
-    os.makedirs("temp", exist_ok=True)
-    temp_path = f"temp/{file.filename}"
+    temp_path = None
 
     try:
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        extension = Path(file.filename).suffix.lower()
 
-        logger.info(f"Fichier sauvegardé: {temp_path}")
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            suffix=extension,
+            prefix="hiresense_",
+            delete=False
+        ) as temp_file:
+            temp_path = temp_file.name
+            total_size = 0
 
+            while chunk := await file.read(1024 * 1024):
+                total_size += len(chunk)
+
+                if total_size > MAX_FILE_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Fichier trop volumineux. Maximum : 10 Mo."
+                    )
+
+                temp_file.write(chunk)
+
+        logger.info("Fichier temporaire enregistré")
+
+        t0 = perf_counter()
         cv_text = extract_text(temp_path)
-
+        temps_extraction = perf_counter() - t0
+        
+        
+        
         if not cv_text or not cv_text.strip():
             logger.error(f"Aucun texte extrait du fichier {file.filename}")
             raise HTTPException(
@@ -73,11 +115,38 @@ async def analyze_cv(
 
         logger.info(f"Texte extrait: {len(cv_text)} caractères")
 
+        t0 = perf_counter()
         entities = extract_entities_structured_auto(cv_text)
+        temps_entites = perf_counter() - t0
         logger.info(f"Entités extraites: {[(k, len(v)) for k, v in entities.items()]}")
 
-        score = calculate_score(cv_text, offer)
+        experiences_detaillees = extract_experiences_detailed(
+            entities.get("experiences", [])
+        )
+        experience_totale_mois = total_experience_months(
+            experiences_detaillees
+        )
+
+        t0 = perf_counter()
+        resultat_scoring = calculate_score_detailed(
+            cv_text,
+            offer,
+            experience_months=experience_totale_mois
+        )
+        score = resultat_scoring["score"]
+        temps_scoring = perf_counter() - t0
         logger.info(f"Score calculé: {score}")
+        
+        
+        logger.info(
+    "Performances HireSense | Extraction: %.3fs | NLP: %.3fs | "
+    "Scoring: %.3fs | Total: %.3fs",
+    temps_extraction,
+    temps_entites,
+    temps_scoring,
+    temps_extraction + temps_entites + temps_scoring
+)
+        
 
         entites_detectees: List[Dict[str, str]] = []
         for label, values in entities.items():
@@ -97,6 +166,9 @@ async def analyze_cv(
         response_data: Dict[str, Any] = {
             "filename": str(file.filename),
             "score_compatibilite": float(score),
+            "explication_score": resultat_scoring,
+            "experiences_detaillees": experiences_detaillees,
+            "experience_totale_mois": experience_totale_mois,
             "entites_detectees": entites_detectees,
             "langues_detectees": list(entities.get("langues", [])),
             "competences_detectees": list(entities.get("competences", [])),
@@ -108,24 +180,28 @@ async def analyze_cv(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Erreur lors de l'analyse du CV {file.filename}: {str(e)}")
-        return JSONResponse(
+
+    except Exception:
+        logger.exception("Erreur interne lors de l'analyse du CV")
+        raise HTTPException(
             status_code=500,
-            content={
-                "error": "Erreur interne lors de l'analyse",
-                "details": str(e),
-                "filename": str(file.filename),
-                "status": "error"
-            }
+            detail="Une erreur interne est survenue pendant l'analyse du CV."
         )
+
     finally:
-        try:
-            if os.path.exists(temp_path):
+        await file.close()
+
+        if temp_path is not None:
+            try:
                 os.remove(temp_path)
-                logger.info(f"Fichier temporaire supprimé: {temp_path}")
-        except Exception as e:
-            logger.warning(f"Impossible de supprimer le fichier temporaire {temp_path}: {e}")
+                logger.info("Fichier temporaire supprimé")
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.exception(
+                    "Impossible de supprimer le fichier temporaire"
+                )
+
 
 @app.get("/health", tags=["Monitoring"])
 async def health_check() -> Dict[str, Any]:
